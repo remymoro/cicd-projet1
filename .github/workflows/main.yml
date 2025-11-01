@@ -1,69 +1,134 @@
-name: CI/CD workflow
+name: CI/CD workflow  # nom du workflow
 
-env:
-  SERVER_USER: 'root'
-  SERVER_IP: '51.38.189.124'
+env:  # définition des variables d'environnement globales
+  SERVER_USER: "root"
+  SERVER_IP: " 51.38.189.124"
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+concurrency:  # règles de simultanéité pour les jobs
+  group: ${{ github.workflow }}-${{ github.ref }}  # regroupe les jobs par nom de workflow et ref git (branche ou tag)
+  cancel-in-progress: true  # annule les jobs en cours si un nouveau job est lancé
 
-on:
-  push:
+on:  # déclencheurs du workflow
+  push:  # déclenché sur un push
     branches:
-      - main
+      - main  # seulement sur la branche main
 
-jobs:
-  tests:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: server
-    steps:
-      - name: checkout le code
-        uses: actions/checkout@v4
+jobs:  # les différents jobs du workflow
 
-      - name: installer Node.js
-        uses: actions/setup-node@v3
-        with:
-          cache: 'npm'
-          cache-dependency-path: server/package-lock.json
+  tests_backend:  # premier job pour tester le backend
+    runs-on: ubuntu-latest  # environnement d'exécution
+    defaults:  # définition des valeurs par défaut pour les étapes
+      run:  # définition des valeurs par défaut pour les étapes run
+        working-directory: server  # définit le dossier de travail par défaut pour les étapes run
+    steps:  # les étapes du job
+    - name: checkout le code  # récupère le code source
+      uses: actions/checkout@v4
 
-      - name: installer les dépendances
-        run: |
-          npm ci
+    - name: installer Node.js  # installe Node.js
+      uses: actions/setup-node@v3  # utilise l'action setup-node en version 3
+      with:
+        cache: 'npm'
+        cache-dependency-path: server/package-lock.json  # chemin vers le package-lock.json pour le cache
 
-      - name: exécute les tests
-        run: |
-          npm run test:ci
+    - name: installer les dépendances  # installe les dépendances npm
+      run: |
+        npm ci --prefer-offline
 
-      - name: vérifie le code
-        run: |
-          npm run lint
+    - name: exécute les tests  # exécute les tests unitaires
+      run: |
+        npm run test:ci
 
-      - name: vérifie les vulnérabilités
-        run: |
-          npm audit
-          
-      - name: Upload du rapport de couverture sur Codecov
-        uses: codecov/codecov-action@v3
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-  
-  deploy:
-    needs: tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: checkout le code
-        uses: actions/checkout@v4
+    - name: vérifie le code  # vérifie le style du code avec lint
+      run: |
+        npm run lint
 
-      - name: déployer sur le serveur
+    - name: vérifie les vulnérabilités  # vérifie les vulnérabilités dans les dépendances
+      run: |
+        npm audit
 
-        run: |
-          eval $(ssh-agent -s)  # Initialise l'agent SSH
-          ssh-add - <<< "${{ secrets.SSH_KEY_VPS }}"  # Ajoute la clé SSH privée
-          mkdir -p ~/.ssh  # Crée le dossier .ssh si nécessaire
-          ssh-keyscan -H $SERVER_IP >> ~/.ssh/known_hosts  # Ajoute le serveur aux hôtes connus
-          scp -r ./server $SERVER_USER@$SERVER_IP:/var/www  # Copie le code sur le serveur
-          ssh $SERVER_USER@$SERVER_IP "cd /var/www/server && npm install --omit=dev"  # Installe les dépendances sur le serveur
-          ssh $SERVER_USER@$SERVER_IP "cd /var/www/server && pm2 startOrRestart ecosystem.config.js --env production && pm2 save"  # Démarre ou redémarre le service avec pm2
+    - name: Upload du rapport de couverture sur Codecov
+      uses: codecov/codecov-action@v3
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  checks_frontend:  # job pour les vérifications sur le frontend
+    runs-on: ubuntu-latest  # environnement d'exécution
+    steps:  # les étapes du job
+    - name: checkout le code  # récupère le code source
+      uses: actions/checkout@v4
+
+    - name: installer Node.js  # installe Node.js
+      uses: actions/setup-node@v3  # utilise l'action setup-node en version 3
+      with:
+        cache: 'npm'
+        cache-dependency-path: client/package-lock.json  # chemin vers le package-lock.json pour le cache
+
+    - name: installer les dépendances  # installe les dépendances npm
+      run: |
+        cd client
+        npm ci --prefer-offline
+
+    - name: vérifie les vulnérabilités  # vérifie les vulnérabilités dans les dépendances
+      run: |
+        cd client
+        npm audit
+
+    - name: vérifie le code  # vérifie le style du code avec lint
+      run: |
+        cd client
+        npm run lint
+
+  build_frontend:  # job pour construire le frontend
+    runs-on: ubuntu-latest  # environnement d'exécution
+    defaults:  # définition des valeurs par défaut pour les étapes
+      run:  # définition des valeurs par défaut pour les étapes run
+        working-directory: client  # définit le dossier de travail par défaut pour les étapes run
+    needs: [checks_frontend]  # dépend du job checks_frontend
+    steps:  # les étapes du job
+    - name: checkout le code  # récupère le code source
+      uses: actions/checkout@v4
+
+    - name: installer Node.js  # installe Node.js
+      uses: actions/setup-node@v3  # utilise l'action setup-node en version 3
+      with:
+        cache: 'npm'
+        cache-dependency-path: client/package-lock.json  # chemin vers le package-lock.json pour le cache
+
+    - name: installer les dépendances  # installe les dépendances npm
+      run: |
+        npm ci --prefer-offline
+
+    - name: build le frontend  # construit le frontend
+      run: |
+        npm run build
+
+    - name: archiver les artefacts  # archive le dossier 'dist' pour une utilisation ultérieure
+      uses: actions/upload-artifact@v4
+      with:
+        name: frontend-dist  # nom de l'artéfact
+        path: client/dist/  # chemin de l'artéfact
+        retention-days: 1  # durée de rétention de l'artéfact
+
+  deploy:  # job de déploiement
+    needs: [checks_frontend, tests_backend, build_frontend]  # dépend des jobs précédents
+    runs-on: ubuntu-latest  # environnement d'exécution
+    steps:  # les étapes du job
+    - name: checkout le code  # récupère le code source
+      uses: actions/checkout@v4
+
+    - name: télécharger l'artéfact du frontend  # télécharge l'artéfact archivé précédemment
+      uses: actions/download-artifact@v4
+      with:
+        name: frontend-dist  # nom de l'artéfact
+        path: ./dist  # chemin où l'artéfact sera téléchargé
+
+    - name: déployer sur le serveur  # déploie les modifications sur le serveur
+      run: |
+        eval $(ssh-agent -s)
+        ssh-add - <<< "${{ secrets.SSH_KEY_VPS }}"
+        mkdir -p ~/.ssh
+        ssh-keyscan -H SERVER_IP >> ~/.ssh/known_hosts
+        scp -r ./dist SERVER_USER@SERVER_IP:/var/www
+        scp -r ./server SERVER_USER@SERVER_IP:/var/www
+        ssh SERVER_USER@SERVER_IP "cd /var/www/server && npm install --omit=dev"
+        ssh SERVER_USER@SERVER_IP "cd /var/www/server && pm2 startOrRestart ecosystem.config.js --env production && pm2 save"
