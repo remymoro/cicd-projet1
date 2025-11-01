@@ -71,7 +71,7 @@ jobs:  # les différents jobs du workflow
     - name: vérifie les vulnérabilités  # vérifie les vulnérabilités dans les dépendances
       run: |
         cd client
-        npm audit
+        npm audit --audit-level=critical
 
     - name: vérifie le code  # vérifie le style du code avec lint
       run: |
