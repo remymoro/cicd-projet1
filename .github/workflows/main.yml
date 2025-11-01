@@ -44,7 +44,11 @@ jobs:
       - name: vérifie les vulnérabilités
         run: |
           npm audit
-
+          
+      - name: Upload du rapport de couverture sur Codecov
+        uses: codecov/codecov-action@v3
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
   
   deploy:
     needs: tests

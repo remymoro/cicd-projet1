@@ -1,1 +1,1 @@
-# cicd-projet1
+![Statut](https://github.com/remymoro/cicd-projet1/actions/workflows/main.yaml/badge.svg)
